@@ -1,0 +1,17 @@
+{
+  "all": false,
+  "include": [
+    "apps/api/src/lib/encryption.ts",
+    "apps/api/src/lib/security.ts",
+    "apps/gateway/src/lib/cors.ts",
+    "apps/gateway/src/lib/shopify.ts"
+  ],
+  "exclude": ["**/*.test.ts", "**/node_modules/**", "**/dist/**"],
+  "reporter": ["text", "lcov"],
+  "report-dir": "coverage",
+  "check-coverage": true,
+  "lines": 80,
+  "statements": 80,
+  "functions": 80,
+  "branches": 70
+}

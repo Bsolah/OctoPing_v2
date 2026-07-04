@@ -1,0 +1,386 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9.0.0'
+  TURBO_TELEMETRY_DISABLED: '1'
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Get pnpm store directory
+        id: pnpm-store
+        shell: bash
+        run: echo "path=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Cache turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @nova/api db:generate
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  test:
+    name: Test
+    needs: lint-and-typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      NODE_ENV: test
+      REDIS_URL: redis://localhost:6379
+      ENCRYPTION_KEY: nova_support_dev_encryption_key1
+      # External services optional in unit tests
+      PINECONE_API_KEY: ''
+      OPENAI_API_KEY: ''
+      SENTRY_DSN: ''
+      DATADOG_API_KEY: ''
+      LANGSMITH_API_KEY: ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @nova/api db:generate
+
+      - name: Run tests with coverage
+        run: pnpm test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  build:
+    name: Build
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Cache turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-build-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-build-
+
+      - name: Cache build outputs
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/*/.next
+            apps/*/dist
+            packages/*/dist
+          key: ${{ runner.os }}-dist-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-dist-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @nova/api db:generate
+
+      - name: Build all packages
+        run: pnpm build
+        env:
+          # Dashboard/Next may read public env at build time
+          NEXT_PUBLIC_API_URL: https://staging.nova-support.dev/v1
+
+  deploy-staging:
+    name: Deploy Staging
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: https://staging.nova-support.dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @nova/api db:generate
+
+      - name: Run database migrations (staging)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: pnpm db:deploy
+
+      - name: Deploy API to staging (Railway)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_STAGING_SERVICE_ID }}
+        run: |
+          if [ -z "${RAILWAY_TOKEN}" ]; then
+            echo "RAILWAY_TOKEN not set — skipping API deploy (configure secrets to enable)"
+            exit 0
+          fi
+          pnpm dlx @railway/cli up --service "${RAILWAY_SERVICE_ID}" --environment staging --ci
+
+      # Alternative ECS deploy (enable by setting AWS credentials + ECS_* secrets):
+      # aws ecs update-service --cluster "$ECS_STAGING_CLUSTER" --service "$ECS_STAGING_SERVICE" --force-new-deployment
+
+      - name: Deploy gateway to Vercel (staging)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_GATEWAY }}
+        run: |
+          if [ -z "${VERCEL_TOKEN}" ]; then
+            echo "VERCEL_TOKEN not set — skipping gateway deploy"
+            exit 0
+          fi
+          cd apps/gateway
+          pnpm exec vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+          pnpm exec vercel build --token="$VERCEL_TOKEN"
+          pnpm exec vercel deploy --prebuilt --token="$VERCEL_TOKEN" --yes
+
+      - name: Deploy dashboard to Vercel (staging)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_DASHBOARD }}
+        run: |
+          if [ -z "${VERCEL_TOKEN}" ]; then
+            echo "VERCEL_TOKEN not set — skipping dashboard deploy"
+            exit 0
+          fi
+          cd apps/dashboard
+          pnpm exec vercel pull --yes --environment=preview --token="$VERCEL_TOKEN"
+          pnpm exec vercel build --token="$VERCEL_TOKEN"
+          pnpm exec vercel deploy --prebuilt --token="$VERCEL_TOKEN" --yes
+
+      - name: Staging health check
+        run: ./scripts/health-check.sh https://staging.nova-support.dev
+        continue-on-error: true
+
+  e2e-tests:
+    name: E2E Tests (Staging)
+    needs: deploy-staging
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: https://staging.nova-support.dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run E2E tests against staging
+        env:
+          E2E_BASE_URL: https://staging.nova-support.dev
+          E2E_API_URL: https://staging.nova-support.dev
+          E2E_GATEWAY_URL: https://staging.nova-support.dev
+        run: pnpm test:e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-staging
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  deploy-production:
+    name: Deploy Production
+    needs: e2e-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: https://nova-support.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @nova/api db:generate
+
+      - name: Run database migrations (production)
+        working-directory: apps/api
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+        run: pnpm db:deploy
+
+      - name: Deploy API to production (Railway)
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_PRODUCTION_SERVICE_ID }}
+        run: |
+          if [ -z "${RAILWAY_TOKEN}" ]; then
+            echo "RAILWAY_TOKEN not set — skipping API deploy"
+            exit 0
+          fi
+          pnpm dlx @railway/cli up --service "${RAILWAY_SERVICE_ID}" --environment production --ci
+
+      - name: Deploy gateway to Vercel (production)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_GATEWAY }}
+        run: |
+          if [ -z "${VERCEL_TOKEN}" ]; then
+            echo "VERCEL_TOKEN not set — skipping gateway deploy"
+            exit 0
+          fi
+          cd apps/gateway
+          pnpm exec vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          pnpm exec vercel build --prod --token="$VERCEL_TOKEN"
+          pnpm exec vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN" --yes
+
+      - name: Deploy dashboard to Vercel (production)
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_DASHBOARD }}
+        run: |
+          if [ -z "${VERCEL_TOKEN}" ]; then
+            echo "VERCEL_TOKEN not set — skipping dashboard deploy"
+            exit 0
+          fi
+          cd apps/dashboard
+          pnpm exec vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+          pnpm exec vercel build --prod --token="$VERCEL_TOKEN"
+          pnpm exec vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN" --yes
+
+      - name: Production smoke tests
+        run: ./scripts/health-check.sh https://nova-support.com

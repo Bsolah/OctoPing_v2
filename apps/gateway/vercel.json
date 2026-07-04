@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "regions": ["iad1", "sfo1", "cdg1", "hnd1", "syd1"],
+  "rewrites": [
+    { "source": "/health", "destination": "/api/health" },
+    { "source": "/v1/:path*", "destination": "/api/v1/:path*" },
+    { "source": "/webhooks/shopify", "destination": "/api/webhooks/shopify" }
+  ]
+}

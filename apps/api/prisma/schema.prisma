@@ -1,0 +1,135 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Merchant {
+  id                  String   @id @default(uuid())
+  shopDomain          String   @unique
+  shopifyShopId       BigInt   @unique
+  accessToken         String // encrypted at application layer
+  planTier            String   @default("free") // free, growth, scale, enterprise
+  aiTone              String   @default("friendly_professional")
+  escalationThreshold Float    @default(0.7)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  conversations Conversation[]
+  orders        Order[]
+  knowledgeBase KnowledgeBase[]
+  agents        Agent[]
+
+  @@map("merchants")
+}
+
+model Conversation {
+  id                String   @id @default(uuid())
+  merchantId        String   @map("merchant_id")
+  customerEmail     String?  @map("customer_email")
+  customerShopifyId BigInt?  @map("customer_shopify_id")
+  channel           String // widget, shopify_inbox, sms, whatsapp, email, instagram
+  status            String   @default("active") // active, resolved, escalated, closed
+  aiResolution      Boolean  @default(false) @map("ai_resolution")
+  escalatedTo       String?  @map("escalated_to")
+  sentimentScore    Float?   @map("sentiment_score")
+  revenueImpact     Decimal? @map("revenue_impact") @db.Decimal(12, 2)
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  merchant Merchant  @relation(fields: [merchantId], references: [id])
+  messages Message[]
+  events   Event[]
+
+  @@index([merchantId, status])
+  @@index([customerEmail])
+  @@index([createdAt])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  conversationId String   @map("conversation_id")
+  senderType     String   @map("sender_type") // ai, customer, human, system
+  senderId       String?  @map("sender_id")
+  content        String
+  aiConfidence   Float?   @map("ai_confidence")
+  aiIntent       String?  @map("ai_intent")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+model Order {
+  id                String    @id @default(uuid())
+  merchantId        String    @map("merchant_id")
+  shopifyOrderId    BigInt    @unique @map("shopify_order_id")
+  customerEmail     String?   @map("customer_email")
+  totalPrice        Decimal?  @map("total_price") @db.Decimal(12, 2)
+  fulfillmentStatus String?   @map("fulfillment_status")
+  trackingNumbers   String[]  @map("tracking_numbers")
+  carrier           String?
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@index([merchantId, customerEmail])
+  @@index([shopifyOrderId])
+  @@map("orders")
+}
+
+model KnowledgeBase {
+  id          String                       @id @default(uuid())
+  merchantId  String                       @map("merchant_id")
+  contentType String                       @map("content_type") // faq, policy, product, shipping
+  title       String
+  content     String
+  embedding   Unsupported("vector(3072)")?
+  metadata    Json?
+  createdAt   DateTime                     @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@index([merchantId, contentType])
+  @@map("knowledge_base")
+}
+
+model Event {
+  id             String   @id @default(uuid())
+  merchantId     String   @map("merchant_id")
+  eventType      String   @map("event_type")
+  conversationId String?  @map("conversation_id")
+  properties     Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  conversation Conversation? @relation(fields: [conversationId], references: [id])
+
+  @@index([merchantId, eventType, createdAt])
+  @@index([createdAt])
+  @@map("events")
+}
+
+model Agent {
+  id           String   @id @default(uuid())
+  merchantId   String   @map("merchant_id")
+  email        String
+  name         String
+  role         String   @default("agent") // owner, admin, agent, viewer
+  avatar       String?
+  isOnline     Boolean  @default(false) @map("is_online")
+  workingHours Json?    @map("working_hours")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id])
+
+  @@unique([merchantId, email])
+  @@map("agents")
+}

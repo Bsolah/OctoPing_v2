@@ -1,0 +1,37 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "REDIS_URL",
+    "REDIS_TOKEN",
+    "API_BACKEND_URL",
+    "SHOPIFY_APP_URL",
+    "SHOPIFY_API_SECRET",
+    "GATEWAY_API_KEY",
+    "DATADOG_API_KEY",
+    "DATADOG_APP_KEY",
+    "SENTRY_DSN",
+    "LANGSMITH_API_KEY",
+    "LANGSMITH_PROJECT"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**", ".vercel/output/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"]
+    }
+  }
+}
