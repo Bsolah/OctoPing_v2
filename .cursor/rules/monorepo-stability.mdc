@@ -1,0 +1,38 @@
+---
+description: Nova Support monorepo stability — scope, packages, secrets, layout pitfalls
+alwaysApply: true
+---
+
+# Monorepo Stability
+
+Nova Support is a pnpm + Turborepo monorepo (`apps/*`, `packages/*`). Prefer small, reversible changes.
+
+## Scope
+
+- Change only what the task requires. No drive-by refactors or unrelated files.
+- Match existing naming, imports (`@/` in apps, `@nova/*` workspaces), and patterns in neighboring code.
+- Do not invent parallel systems when a module already exists (billing, analytics, escalation, Shopify).
+
+## Packages
+
+| Package | Role |
+| --- | --- |
+| `@nova/api` | Fastify API, Prisma, Redis, Shopify, AI orchestration |
+| `@nova/dashboard` | Next.js 14 embedded Shopify Admin app (`src/app`) |
+| `@nova/gateway` | Edge gateway |
+| `@nova/shared` | Shared Zod schemas and types (build before API consumers) |
+| `@nova/ai` | Agent graph, LLM, RAG |
+| `@nova/ui` | Shared UI + embeddable widget |
+
+- Import via workspace packages (`@nova/shared`, `@nova/ai`), not deep relative paths across apps.
+- After changing `packages/shared` or `packages/ai` public exports, run that package’s `build` (or `pnpm --filter @nova/shared build`) before typechecking dependents.
+- After Prisma schema changes: `pnpm --filter @nova/api db:generate` (and add a migration under `apps/api/prisma/migrations/`).
+
+## Secrets
+
+- Never commit `.env` or real credentials. Update `.env.example` only with placeholder keys.
+- Shopify access tokens stay encrypted at rest (`encryptPII` / `decryptPII`).
+
+## Local ports
+
+- Dashboard `3000`, API `3001`. Do not silently rebind without updating README and env examples.

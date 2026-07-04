@@ -11,14 +11,25 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.js"
     },
-    "./styles.css": "./dist/styles.css"
+    "./styles.css": "./dist/styles.css",
+    "./widget": {
+      "types": "./src/widget/index.tsx",
+      "import": "./src/widget/index.tsx",
+      "default": "./src/widget/index.tsx"
+    },
+    "./widget/nova-widget.js": "./dist/widget/nova-widget.js",
+    "./widget/nova-widget.umd.js": "./dist/widget/nova-widget.umd.js",
+    "./widget/nova-widget.css": "./dist/widget/nova-widget.css"
   },
   "scripts": {
-    "build": "tsup && cp src/styles.css dist/styles.css",
+    "build": "tsup && cp src/styles.css dist/styles.css && pnpm build:widget",
+    "build:widget": "vite build --config vite.widget.config.ts",
     "dev": "tsup --watch",
+    "dev:widget": "vite build --config vite.widget.config.ts --watch",
     "lint": "eslint src --ext .ts,.tsx",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"No tests yet\""
+    "test": "echo \"No tests yet\"",
+    "size:widget": "node -e \"const fs=require('fs');const z=require('zlib');const b=fs.readFileSync('dist/widget/nova-widget.js');const g=z.gzipSync(b);console.log('raw',b.length,'gzip',g.length)\""
   },
   "peerDependencies": {
     "react": "^18.0.0",
@@ -34,9 +45,11 @@
   "devDependencies": {
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tsup": "^8.3.0",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
   }
 }

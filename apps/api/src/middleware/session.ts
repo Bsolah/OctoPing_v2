@@ -1,24 +1,15 @@
-import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
+
 import fp from 'fastify-plugin';
 
-import { getSession, type SessionData } from '@/lib/redis';
-
-declare module 'fastify' {
-  interface FastifyRequest {
-    session: SessionData;
-  }
-}
-
-function isHealthCheck(request: FastifyRequest): boolean {
-  const path = request.url.split('?')[0] ?? '';
-  return path === '/health' || path.startsWith('/health/');
-}
+import { isPublicApiPath } from '@/lib/public-routes';
+import { getSession } from '@/lib/redis';
 
 const sessionPlugin: FastifyPluginAsync = async (app) => {
   app.decorateRequest('session', null);
 
   app.addHook('onRequest', async (request, reply) => {
-    if (isHealthCheck(request)) {
+    if (isPublicApiPath(request.url)) {
       return;
     }
 

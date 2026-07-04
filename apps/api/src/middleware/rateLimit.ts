@@ -1,56 +1,71 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 
+import { isPublicApiPath } from '@/lib/public-routes';
 import { checkRateLimit } from '@/lib/redis';
 
-const DEFAULT_MAX_REQUESTS = 100;
-const DEFAULT_WINDOW_SECONDS = 60;
+const IP_MAX = 100;
+const MERCHANT_MAX = 1000;
+const WINDOW_SECONDS = 60;
 
-function isHealthCheck(request: FastifyRequest): boolean {
-  const path = request.url.split('?')[0] ?? '';
-  return path === '/health' || path.startsWith('/health/');
-}
-
-function getEndpoint(request: FastifyRequest): string {
-  return request.routeOptions.url ?? request.url.split('?')[0] ?? request.url;
+function getClientIp(request: FastifyRequest): string {
+  const forwarded = request.headers['x-forwarded-for'];
+  if (typeof forwarded === 'string' && forwarded.length > 0) {
+    return forwarded.split(',')[0]?.trim() || request.ip;
+  }
+  return request.ip;
 }
 
 const rateLimitPlugin: FastifyPluginAsync = async (app) => {
   app.addHook('onRequest', async (request, reply) => {
-    if (isHealthCheck(request)) {
+    if (isPublicApiPath(request.url)) {
       return;
     }
 
-    const merchantId = request.session?.merchantId;
+    const ip = getClientIp(request);
+    const ipResult = await checkRateLimit(
+      `ratelimit:ip:${ip}`,
+      IP_MAX,
+      WINDOW_SECONDS,
+    );
+
+    reply.header('X-RateLimit-Limit-IP', IP_MAX);
+    reply.header('X-RateLimit-Remaining-IP', ipResult.remaining);
+
+    if (!ipResult.allowed) {
+      const retryAfter = Math.max(
+        1,
+        Math.ceil((ipResult.resetAt - Date.now()) / 1000),
+      );
+      reply.header('Retry-After', retryAfter);
+      return reply.status(429).send({
+        error: { message: 'Too Many Requests', statusCode: 429 },
+      });
+    }
+
+    const merchantId = request.auth?.merchantId ?? request.session?.merchantId;
     if (!merchantId) {
       return;
     }
 
-    const endpoint = getEndpoint(request);
-    const key = `ratelimit:${merchantId}:${endpoint}`;
-    const result = await checkRateLimit(
-      key,
-      DEFAULT_MAX_REQUESTS,
-      DEFAULT_WINDOW_SECONDS,
+    const merchantResult = await checkRateLimit(
+      `ratelimit:merchant:${merchantId}`,
+      MERCHANT_MAX,
+      WINDOW_SECONDS,
     );
 
-    void reply.header('X-RateLimit-Limit', DEFAULT_MAX_REQUESTS);
-    void reply.header('X-RateLimit-Remaining', result.remaining);
-    void reply.header('X-RateLimit-Reset', Math.ceil(result.resetAt / 1000));
+    reply.header('X-RateLimit-Limit', MERCHANT_MAX);
+    reply.header('X-RateLimit-Remaining', merchantResult.remaining);
+    reply.header('X-RateLimit-Reset', Math.ceil(merchantResult.resetAt / 1000));
 
-    if (!result.allowed) {
+    if (!merchantResult.allowed) {
       const retryAfter = Math.max(
         1,
-        Math.ceil((result.resetAt - Date.now()) / 1000),
+        Math.ceil((merchantResult.resetAt - Date.now()) / 1000),
       );
-
-      void reply.header('Retry-After', retryAfter);
-
+      reply.header('Retry-After', retryAfter);
       return reply.status(429).send({
-        error: {
-          message: 'Too Many Requests',
-          statusCode: 429,
-        },
+        error: { message: 'Too Many Requests', statusCode: 429 },
       });
     }
   });
@@ -58,5 +73,5 @@ const rateLimitPlugin: FastifyPluginAsync = async (app) => {
 
 export default fp(rateLimitPlugin, {
   name: 'redis-rate-limit',
-  dependencies: ['session'],
+  dependencies: ['auth'],
 });

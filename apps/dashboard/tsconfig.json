@@ -11,13 +11,17 @@
     "incremental": true,
     "baseUrl": ".",
     "paths": {
-      "@/components/*": ["./components/*"],
-      "@/lib/*": ["./lib/*"],
+      "@/*": ["./src/*"],
       "@nova/shared": ["../../packages/shared/src"],
       "@nova/ui": ["../../packages/ui/src"]
     },
     "isolatedModules": true
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
+  "include": [
+    "next-env.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
   "exclude": ["node_modules"]
 }

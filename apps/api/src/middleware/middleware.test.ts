@@ -7,7 +7,7 @@ import {
   disconnectRedis,
 } from '@/lib/redis';
 import rateLimitPlugin from '@/middleware/rateLimit';
-import sessionPlugin from '@/middleware/session';
+import authPlugin from '@/plugins/auth';
 import { healthRoutes } from '@/routes/health';
 
 function assert(condition: boolean, message: string) {
@@ -20,7 +20,7 @@ async function main() {
   await connectRedis();
 
   const app = Fastify({ logger: false });
-  await app.register(sessionPlugin);
+  await app.register(authPlugin);
   await app.register(rateLimitPlugin);
   await app.register(healthRoutes);
 

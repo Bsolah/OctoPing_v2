@@ -1,0 +1,31 @@
+---
+description: Next.js dashboard layout and routing stability
+globs: apps/dashboard/**/*
+alwaysApply: false
+---
+
+# Dashboard (Next.js)
+
+App Router lives **only** under `apps/dashboard/src/app`.
+
+## Critical layout rule
+
+- **Never** create `apps/dashboard/app/`, `apps/dashboard/pages/`, or empty root `components/` / `lib/` stubs.
+- Next.js prefers root `app/` over `src/app/`. An empty root `app/` makes every route 404 (`/_not-found`).
+- Pages, layouts, and `globals.css` stay in `src/app/**`. Shared UI in `src/components`, hooks in `src/hooks`, clients in `src/lib`.
+
+```text
+# ❌ BAD — shadows src/app and breaks routing
+apps/dashboard/app/
+
+# ✅ GOOD
+apps/dashboard/src/app/page.tsx
+apps/dashboard/src/app/billing/page.tsx
+```
+
+## Conventions
+
+- Client pages that fetch data: `'use client'` + Polaris components.
+- API access only through `src/lib/api.ts` (`apiFetch` + bearer token).
+- After routing or config changes, delete `.next` if routes look stale, then restart `pnpm dev`.
+- Nav items belong in `src/components/Providers.tsx`.

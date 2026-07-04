@@ -9,10 +9,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/routes/*": ["src/routes/*"],
-      "@/services/*": ["src/services/*"],
-      "@/middleware/*": ["src/middleware/*"],
-      "@/lib/*": ["src/lib/*"]
+      "@/*": ["src/*"]
     }
   },
   "include": ["src/**/*"],

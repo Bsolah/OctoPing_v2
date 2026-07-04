@@ -1,0 +1,39 @@
+{
+  "name": "@nova/ai",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/prompts/prompts.test.ts && tsx src/embeddings/chunking.test.ts && tsx src/agents/agents.test.ts",
+    "demo": "tsx --env-file=../../apps/api/.env scripts/demo-product-question.ts",
+    "demo:agent": "tsx --env-file=../../apps/api/.env scripts/demo-agent-turn.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@nova/shared": "workspace:*",
+    "@pinecone-database/pinecone": "^4.0.0",
+    "ioredis": "^5.4.1",
+    "js-tiktoken": "^1.0.15",
+    "openai": "^4.67.0",
+    "zod": "^3.25.28"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2"
+  }
+}

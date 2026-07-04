@@ -4,6 +4,7 @@ import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 
 import { getLogger } from '@/lib/observability';
+import { isPublicApiPath } from '@/lib/public-routes';
 import { checkRateLimit } from '@/lib/redis';
 import { detectSuspiciousRequest } from '@/lib/security';
 
@@ -18,11 +19,6 @@ function getClientIp(request: FastifyRequest): string {
     return forwarded.split(',')[0]?.trim() || request.ip;
   }
   return request.ip;
-}
-
-function isHealthPath(url: string): boolean {
-  const path = url.split('?')[0] ?? '';
-  return path === '/health' || path.startsWith('/health/');
 }
 
 function isAuthPath(url: string): boolean {
@@ -109,7 +105,7 @@ const securityPlugin: FastifyPluginAsync = async (app) => {
   });
 
   app.addHook('onRequest', async (request, reply) => {
-    if (isHealthPath(request.url)) {
+    if (isPublicApiPath(request.url)) {
       return;
     }
 
@@ -160,6 +156,10 @@ const securityPlugin: FastifyPluginAsync = async (app) => {
   });
 
   app.addHook('preHandler', async (request, reply) => {
+    if (isPublicApiPath(request.url)) {
+      return;
+    }
+
     if (
       request.method === 'GET' ||
       request.method === 'HEAD' ||

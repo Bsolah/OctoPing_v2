@@ -1,0 +1,22 @@
+---
+description: TypeScript strict-mode conventions for Nova apps and packages
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# TypeScript
+
+- Strict mode is on (`tsconfig.base.json`). Do not weaken `strict`, `noUncheckedIndexedAccess`, or related flags.
+- Prefer `unknown` over `any`. Avoid new `any` and `@ts-expect-error` without a one-line reason.
+- Shared request/response shapes live in `@nova/shared` (Zod schemas). Rebuild `@nova/shared` after schema edits so `dist` types stay current.
+- API imports use `@/` path aliases; do not introduce conflicting path maps.
+- Prefer explicit return types on exported public functions in `lib/` when inference is ambiguous.
+
+```typescript
+// ❌ BAD — consumer still sees old types
+// edit packages/shared/src/types/api.ts and skip build
+
+// ✅ GOOD
+// edit schema, then:
+// pnpm --filter @nova/shared build
+```

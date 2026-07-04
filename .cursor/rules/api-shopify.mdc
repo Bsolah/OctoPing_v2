@@ -1,0 +1,32 @@
+---
+description: Fastify API, Shopify, billing, and usage conventions
+globs: apps/api/**/*
+alwaysApply: false
+---
+
+# API / Shopify
+
+## Structure
+
+- Register routes in `src/app.ts`. Keep domain logic in `src/lib/**`, not inline in route handlers.
+- Existing domains: `lib/billing`, `lib/analytics`, `lib/escalation`, `lib/shopify`, `lib/ai-runner`.
+- Auth via `plugins/auth` + `resolveMerchant` / `resolveAgent`. Return `{ error: { message, statusCode } }` consistently.
+
+## Shopify
+
+- Admin GraphQL only through `lib/shopify/graphql.ts` (`shopifyFetch`).
+- Webhooks: verify HMAC, idempotent via `WebhookDelivery`, return **401** only for bad signatures.
+- Topic path mapping: `topicToPath` / `pathToTopic` — topics with underscores (e.g. `app_subscriptions/update`) need an explicit `pathToTopic` special case.
+- Access tokens: encrypt on write, decrypt only when calling Shopify.
+
+## Billing & usage
+
+- Plans: `lib/billing/plans.ts`. Subscriptions: `lib/billing/shopify-billing.ts`. Quotas: `lib/billing/usage.ts`.
+- Count usage **only** for AI-resolved conversations (`recordAiResolutionUsage`), never human-handled.
+- Gate AI with `enforceAiUsage` before `runConversationAi`. Hard limit returns the human-only message.
+- Paid plan changes use Shopify confirmation URLs; do not set `planTier` to paid until `verifySubscription` succeeds.
+
+## Data
+
+- Prisma schema changes require a migration SQL file. Prefer additive, idempotent `IF NOT EXISTS` when safe.
+- Fire-and-forget analytics via `trackEvent` (batched); do not block request paths on ClickHouse.

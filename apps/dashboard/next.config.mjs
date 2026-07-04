@@ -15,7 +15,8 @@ const nextConfig = {
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: https:",
               "font-src 'self' data:",
-              "connect-src 'self' https:",
+              "connect-src 'self' https: http://localhost:* ws://localhost:* wss:",
+
               // Allow embed in Shopify Admin; deny all other framers
               "frame-ancestors https://admin.shopify.com https://*.myshopify.com",
               "base-uri 'self'",

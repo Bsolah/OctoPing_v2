@@ -1,0 +1,33 @@
+---
+description: Mandatory typecheck and lint gates before finishing work
+alwaysApply: true
+---
+
+# Quality Gates
+
+Before considering code changes complete, verify the packages you touched:
+
+```bash
+pnpm --filter @nova/shared build   # if shared types/schemas changed
+pnpm --filter @nova/api db:generate  # if Prisma schema changed
+pnpm --filter @nova/api typecheck
+pnpm --filter @nova/dashboard typecheck
+```
+
+For broader changes, prefer:
+
+```bash
+pnpm typecheck
+pnpm lint
+```
+
+## Rules
+
+- Do **not** skip gates, use `--no-verify`, or disable rules to land broken code.
+- Fix type errors you introduce; do not paper over with `any` or `@ts-ignore`.
+- Pre-commit (Husky) runs `lint-staged` (ESLint + Prettier). Keep that green; do not weaken `.husky/pre-commit`.
+- If `tsc` hangs on `@nova/ai`, typecheck API/dashboard packages directly rather than abandoning checks.
+
+## After fixes
+
+Re-run the relevant typecheck until it exits 0. Note only real blockers (missing env, external services).
